@@ -1,0 +1,17 @@
+{
+  "D": 4,
+  "N": 10,
+  "K": 3,
+  "n_clients": 10,
+  "lambda": 1.0,
+  "lr": 0.0005,
+  "seed": 2,
+  "centralized_vs_true": 0.3234048638879694,
+  "local_vs_true": 1.5034613768758924,
+  "local_vs_central": 1.4533543636135557,
+  "fl_vs_true": 1.1961695157218901,
+  "fl_vs_central": 1.1431797876319436,
+  "fl_vs_true_aug": 1.106384705326988,
+  "fl_vs_central_aug": 1.0601438766844729,
+  "runtime_sec": 4022.6196687221527
+}

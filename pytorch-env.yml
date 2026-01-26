@@ -1,0 +1,15 @@
+name: pytorch-env
+channels:
+  - nvidia
+  - conda-forge
+dependencies:
+  - python==3.12
+  - pytorch-gpu>=2.6,<2.7
+  - torchvision
+  - torchaudio
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - pip

@@ -9,8 +9,7 @@ import torch
 # Import your project code
 # ============================================================
 from data import generate_federated_data, er_adjacency_matrix
-from models import DiagGMM
-from training import run_federated_skl_gtvmin, centralized_gmm_baseline, local_gmm_baseline
+from training import DiagGMM, run_federated_skl_gtvmin, centralized_gmm_baseline, local_gmm_baseline
 from metrics import est_error
 
 
@@ -47,6 +46,7 @@ def parse_args():
 def run_experiment(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
     # ----------------------
     # Data
@@ -68,7 +68,6 @@ def run_experiment(args):
 
     # Convert from NumPy to torch tensors and move to device
     client_data = torch.from_numpy(client_data).to(args.device)
-    A = torch.from_numpy(A).to(args.device)
 
 
     # ----------------------
@@ -79,12 +78,16 @@ def run_experiment(args):
         for i in range(args.n_clients)
     }
 
+    models_aug = {
+        i: DiagGMM(K=args.K, D=args.D, init_scale=1.0).to(args.device)
+        for i in range(args.n_clients)
+    }
     # ----------------------
     # Federated training
     # ----------------------
     start = time.time()
     run_federated_skl_gtvmin(
-        W=A,
+        A=A,
         X=client_data,
         models=models,
         rounds=args.rounds,
@@ -98,6 +101,24 @@ def run_experiment(args):
         use_forward_term=True,
     )
     fl_time = time.time() - start
+
+    # ----------------------
+    # No Forward KL term
+    # ----------------------
+    run_federated_skl_gtvmin(
+        A=A,
+        X=client_data,
+        models=models_aug,
+        rounds=args.rounds,
+        lam=args.reg_term,
+        M_self=512,
+        M_nbr=512,
+        local_steps=250,
+        lr=args.lrate,
+        batch_size=256,
+        device=args.device,
+        use_forward_term=False,
+    )
 
     # ----------------------
     # Baselines
@@ -116,9 +137,19 @@ def run_experiment(args):
         fl_vs_true.append(est_error(mu, means))
         fl_vs_central.append(est_error(mu, gmm_c.means_))
 
+    fl_vs_true_aug = []
+    fl_vs_central_aug = []
+
+    for m in models_aug.values():
+        mu = m.means.detach().cpu().numpy()
+        fl_vs_true_aug.append(est_error(mu, means))
+        fl_vs_central_aug.append(est_error(mu, gmm_c.means_))
+
     local_vs_true = []
+    local_vs_central = []
     for gmm in gmm_l.values():
         local_vs_true.append(est_error(gmm.means_, means))
+        local_vs_central.append(est_error(gmm.means_,gmm_c.means_))
 
     result = {
         "D": args.D,
@@ -130,8 +161,11 @@ def run_experiment(args):
         "seed": args.seed,
         "centralized_vs_true": float(est_error(gmm_c.means_, means)),
         "local_vs_true": float(np.mean(local_vs_true)),
+        "local_vs_central": float(np.mean(local_vs_central)),
         "fl_vs_true": float(np.mean(fl_vs_true)),
         "fl_vs_central": float(np.mean(fl_vs_central)),
+        "fl_vs_true_aug": float(np.mean(fl_vs_true_aug)),
+        "fl_vs_central_aug": float(np.mean(fl_vs_central_aug)),
         "runtime_sec": fl_time,
     }
 

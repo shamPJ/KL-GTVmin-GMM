@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import torch
+from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from typing import Dict, List, Optional, Tuple
 import torch.nn.functional as F
@@ -32,6 +33,35 @@ class DiagGMM(nn.Module):
         self.means = nn.Parameter(init_scale * torch.randn(K, D))
         self.log_std = nn.Parameter(torch.zeros(K, D))
 
+    @torch.no_grad()
+    def initialize_params(self, X):
+        X_np = X.detach().cpu().numpy()
+        # init means
+        kmeans = KMeans(n_clusters=self.K).fit(X_np)
+        means = torch.tensor(kmeans.cluster_centers_, dtype=X.dtype, device=X.device)
+
+        # init mixture weights
+        labels = torch.tensor(kmeans.labels_, device=X.device, dtype=torch.long)
+        counts = torch.bincount(labels, minlength=self.K).float()
+        eps = 1e-8
+        probs = (counts + eps) / (counts.sum() + eps * self.K)
+
+        # init cov
+        eps = 1e-6
+        vars = []
+        
+        for k in range(self.K):
+            cluster = X[kmeans.labels_ == k]
+            if len(cluster) > 0:
+                vars.append(cluster.var(dim=0, unbiased=False))
+            else:
+                vars.append(X.var(dim=0, unbiased=False))
+        
+        vars = torch.stack(vars)
+        self.means.copy_(means)
+        self.logits.copy_(torch.log(probs))
+        self.log_std.copy_(0.5 * torch.log(vars + eps))
+    
     def mixture_weights(self) -> torch.Tensor:
         """Return pi_k as a probability vector (K,)."""
         return F.softmax(self.logits, dim=0)
@@ -175,7 +205,7 @@ def local_update_emm(
     # Generate frozen sample pools (paper: MC approximation of KL terms)
     with torch.no_grad():
         x_self = gmm_i_prev.sample(M_self).to(device)
-        x_nbr_list = [m.to(device).sample(M_nbr) for m in neighbor_models_prev]
+        x_nbr_list = [m.sample(M_nbr) for m in neighbor_models_prev]
 
     # Optimizer for the local surrogate
     opt = torch.optim.Adam(gmm_i.parameters(), lr=lr)
@@ -229,7 +259,7 @@ def local_update_emm(
 # 5) Synchronous FL rounds (paper-like)
 # ============================================================
 def run_federated_skl_gtvmin(
-    A: torch.Tensor,
+    A: np.ndarray,
     X: torch.Tensor,
     models: Dict[int, DiagGMM],
     rounds: int = 10,
@@ -253,6 +283,11 @@ def run_federated_skl_gtvmin(
 
     The coupling parameter lam corresponds to the paper's regularization parameter (lambda / alpha).
     """
+
+    # Init params
+    for i, model in models.items():
+        model.initialize_params(X[i])
+
     for t in range(rounds):
         # Freeze all models for synchronous round t
         prev = {i: clone_gmm(m).to(device) for i, m in models.items()}

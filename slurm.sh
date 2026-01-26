@@ -12,8 +12,8 @@
 # Environment
 # ===============================
 module load mamba
-module load cuda    # if required on your cluster
-source activate hetFL
+#module load cuda    # if required on your cluster
+source activate pytorch-env
 
 # ===============================
 # Sweep grids
@@ -23,7 +23,7 @@ N_LIST=(10 25 50)
 LAM_LIST=(0 0.5 1.0)
 SEED_LIST=(0 1 2 3 4 5 6 7 8 9)
 
-LR=0.003
+LR=0.0005
 ROUNDS=100
 NCLIENTS=10
 K=3
