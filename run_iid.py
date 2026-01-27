@@ -5,13 +5,9 @@ import time
 import numpy as np
 import torch
 
-# ============================================================
-# Import your project code
-# ============================================================
-from data import generate_federated_data, er_adjacency_matrix
+from data import generate_data_iid, er_adjacency_matrix
 from training import DiagGMM, run_federated_skl_gtvmin, centralized_gmm_baseline, local_gmm_baseline
 from metrics import est_error
-
 
 # ============================================================
 # Argument parsing
@@ -20,14 +16,14 @@ def parse_args():
     parser = argparse.ArgumentParser("Federated GMM experiments")
 
     # Sweep-controlled params (from SLURM)
-    parser.add_argument("--reg_term", type=float, required=True, help="lambda coupling")
-    parser.add_argument("--p_in", type=float, default=1.0)
-    parser.add_argument("--p_out", type=float, default=0.0)
+    parser.add_argument("--reg_term", type=float, default=0.5, help="lambda coupling")
+    parser.add_argument("--p_in", type=float, default=0.8)
     parser.add_argument("--lrate", type=float, default=1e-3)
 
     # Experiment params
     parser.add_argument("--D", type=int, default=2)
     parser.add_argument("--N", type=int, default=10)
+    parser.add_argument("--N_val", type=int, default=1000)
     parser.add_argument("--K", type=int, default=3)
     parser.add_argument("--n_clients", type=int, default=10)
     parser.add_argument("--rounds", type=int, default=100)
@@ -38,7 +34,6 @@ def parse_args():
     parser.add_argument("--outdir", type=str, default="results")
 
     return parser.parse_args()
-
 
 # ============================================================
 # Single experiment
@@ -51,14 +46,13 @@ def run_experiment(args):
     # ----------------------
     # Data
     # ----------------------
-    client_data, _, means = generate_federated_data(
+    client_data, client_data_val, client_labels, client_labels_val, means  = generate_data_iid(
         n_clients=args.n_clients,
-        n_samples=args.n_clients * args.N,
+        n_samples=args.N,
+        n_samples_val=args.N_val,
         n_features=args.D,
         n_clusters=args.K,
-        seed=args.seed,
-        non_iid=False,
-        alpha=0.3,
+        seed=args.seed
     )
 
     A = er_adjacency_matrix(
@@ -68,7 +62,7 @@ def run_experiment(args):
 
     # Convert from NumPy to torch tensors and move to device
     client_data = torch.from_numpy(client_data).to(args.device)
-
+    client_data_val = torch.from_numpy(client_data_val).to(args.device)
 
     # ----------------------
     # Models
@@ -86,45 +80,47 @@ def run_experiment(args):
     # Federated training
     # ----------------------
     start = time.time()
-    run_federated_skl_gtvmin(
-        A=A,
-        X=client_data,
-        models=models,
-        rounds=args.rounds,
-        lam=args.reg_term,
-        M_self=512,
-        M_nbr=512,
-        local_steps=250,
-        lr=args.lrate,
-        batch_size=256,
-        device=args.device,
-        use_forward_term=True,
+    fl_ll = run_federated_skl_gtvmin(
+            A=A,
+            X=client_data,
+            X_val=client_data_val,
+            models=models,
+            rounds=args.rounds,
+            lam=args.reg_term,
+            M_self=512,
+            M_nbr=512,
+            local_steps=250,
+            lr=args.lrate,
+            batch_size=256,
+            device=args.device,
+            use_forward_term=True,
     )
     fl_time = time.time() - start
 
     # ----------------------
     # No Forward KL term
     # ----------------------
-    run_federated_skl_gtvmin(
-        A=A,
-        X=client_data,
-        models=models_aug,
-        rounds=args.rounds,
-        lam=args.reg_term,
-        M_self=512,
-        M_nbr=512,
-        local_steps=250,
-        lr=args.lrate,
-        batch_size=256,
-        device=args.device,
-        use_forward_term=False,
+    fl_aug_ll = run_federated_skl_gtvmin(
+                A=A,
+                X=client_data,
+                X_val=client_data_val,
+                models=models_aug,
+                rounds=args.rounds,
+                lam=args.reg_term,
+                M_self=512,
+                M_nbr=512,
+                local_steps=250,
+                lr=args.lrate,
+                batch_size=256,
+                device=args.device,
+                use_forward_term=False,
     )
 
     # ----------------------
     # Baselines
     # ----------------------
-    gmm_c, _, _ = centralized_gmm_baseline(client_data, K=args.K)
-    gmm_l, _, _ = local_gmm_baseline(client_data, K=args.K)
+    gmm_c, _, avg_ll_c = centralized_gmm_baseline(client_data, client_data_val, K=args.K)
+    gmm_l, _, avg_ll_l = local_gmm_baseline(client_data, client_data_val, K=args.K)
 
     # ----------------------
     # Errors
@@ -159,6 +155,10 @@ def run_experiment(args):
         "lambda": args.reg_term,
         "lr": args.lrate,
         "seed": args.seed,
+        "ll_c": avg_ll_c,
+        "ll_l": avg_ll_l,
+        "fl_ll": fl_ll,
+        "fl_aug_ll": fl_aug_ll,
         "centralized_vs_true": float(est_error(gmm_c.means_, means)),
         "local_vs_true": float(np.mean(local_vs_true)),
         "local_vs_central": float(np.mean(local_vs_central)),

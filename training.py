@@ -261,6 +261,7 @@ def local_update_emm(
 def run_federated_skl_gtvmin(
     A: np.ndarray,
     X: torch.Tensor,
+    X_val: torch.Tensor,
     models: Dict[int, DiagGMM],
     rounds: int = 10,
     lam: float = 0.25,
@@ -329,10 +330,11 @@ def run_federated_skl_gtvmin(
         with torch.no_grad():
             ll = []
             for i in range(N):
-                ll.append(models[i].log_prob(X[i].to(device)).mean().item())
+                ll.append(models[i].log_prob(X_val[i]).mean().item())
             avg_ll = sum(ll) / len(ll)
-            print(f"[round {t+1:02d}/{rounds}] avg private log-likelihood = {avg_ll:.3f}")
-
+            # print(f"[round {t+1:02d}/{rounds}] avg validation log-likelihood = {avg_ll:.3f}")
+    
+    return avg_ll
 
 def to_numpy(x: torch.Tensor) -> np.ndarray:
     """Detach torch tensor and move to NumPy."""
@@ -340,6 +342,7 @@ def to_numpy(x: torch.Tensor) -> np.ndarray:
 
 def centralized_gmm_baseline(
     X: torch.Tensor,
+    X_val: torch.Tensor,
     K: int,
     seed: int = 0,
 ):
@@ -350,6 +353,7 @@ def centralized_gmm_baseline(
     # Pool all data
     n_clients, N, D = X.shape
     X_np = to_numpy(X)
+    X_val_np = to_numpy(X_val)
     X_all = X_np.reshape(-1,D)
 
     gmm = GaussianMixture(
@@ -364,13 +368,14 @@ def centralized_gmm_baseline(
     # gmm.score(X) computes per-sample average log-likelihood of the given data X
     ll = {}
     for i in range(n_clients):
-        ll[i] = gmm.score(X_np[i])  
+        ll[i] = gmm.score(X_val_np[i])  
     avg_ll = sum(ll.values()) / len(ll) # across nodes average
 
     return gmm, ll, avg_ll
     
 def local_gmm_baseline(
     X: torch.Tensor,
+    X_val: torch.Tensor,
     K: int,
     seed: int = 0,
 ):
@@ -382,6 +387,7 @@ def local_gmm_baseline(
 
     n_clients, N, D = X.shape
     X_np = to_numpy(X)
+    X_val_np = to_numpy(X_val)
 
     for i in range(n_clients):
         gmm = GaussianMixture(
@@ -393,7 +399,7 @@ def local_gmm_baseline(
         gmm.fit(X_np[i])
 
         models[i] = gmm
-        ll[i] = gmm.score(X_np[i])  
+        ll[i] = gmm.score(X_val_np[i])  
 
     avg_ll = sum(ll.values()) / len(ll)
     return models, ll, avg_ll
