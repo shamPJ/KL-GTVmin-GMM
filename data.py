@@ -47,9 +47,9 @@ def generate_data_dirichlet(n_clients=3,
                             alpha=0.5):
 
     N_i = n_samples+n_samples_val
+
     client_data,  client_labels, client_data_val, client_labels_val = [], [], [], []
     means_list = []
-
     for c in range(n_clients):
         np.random.seed(seed+c)
         props = np.random.dirichlet(alpha*np.ones(n_clusters))
@@ -60,18 +60,26 @@ def generate_data_dirichlet(n_clients=3,
             samples_per_class[i % n_clusters] += np.sign(diff) 
 
         assert sum(samples_per_class) == N_i
-        
-        X, y, means = make_blobs(n_samples=samples_per_class,
-                        n_features=n_features,
-                        centers=None,
-                        return_centers=True,
-                        random_state=seed)
-        
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=n_samples_val, stratify=y)
+        try:
+            X, y, means = make_blobs(n_samples=samples_per_class,
+                    n_features=n_features,
+                    centers=None,
+                    return_centers=True,
+                    random_state=seed)   
+            X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=n_samples_val, stratify=y)
+        except ValueError:
+            print("ValueError")
+            for k in range(n_clusters):
+                if len(y[y==k]) == 1:
+                    idx = np.where(y!=k)[0]
+                    X_new = X[idx] 
+                    y_new = y[idx]
+                    X_train, X_val, y_train, y_val = train_test_split(X_new, y_new, test_size=n_samples_val-1, stratify=y_new)
+               
         client_data.append(X_train)
-        client_data_val.append(X_val)
+        client_data_val.append(X_val[:n_samples_val-1])
         client_labels.append(y_train)
-        client_labels_val.append(y_val)
+        client_labels_val.append(y_val[:n_samples_val-1])
         means_list.append(means)
     return np.array(client_data), np.array(client_data_val), np.array(client_labels), np.array(client_labels_val), means_list
 
