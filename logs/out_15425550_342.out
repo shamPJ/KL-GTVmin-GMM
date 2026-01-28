@@ -1,0 +1,9 @@
+========================================
+Running experiment on GPU
+  D       = 8
+  N       = 100
+  lambda  = 0.5
+  seed    = 2
+  GPU     = 0
+========================================
+[DONE] Results saved to results_iid/D8_N100_lam0.5_seed2.json

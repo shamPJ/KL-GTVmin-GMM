@@ -66,7 +66,7 @@ echo "========================================"
 # ===============================
 # Run experiment
 # ===============================
-srun python run.py \
+srun python run_iid.py \
     --D $D \
     --N $N \
     --N_val $N_VAL \
