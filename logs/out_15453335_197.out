@@ -1,0 +1,9 @@
+========================================
+Running experiment on GPU
+  D       = 4
+  N       = 50
+  alpha  = 1.0
+  seed    = 7
+  GPU     = 0
+========================================
+[DONE] Results saved to results_dirichlet/D4_N50_alpha1.0_seed7.json

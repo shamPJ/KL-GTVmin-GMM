@@ -40,11 +40,11 @@ NS=${#SEED_LIST[@]}
 
 # Total jobs = 3 * 4 * 3 * 10 = 360
 
-D_IDX=$(( IDX / (NN * NL * NS) ))
-REM1=$(( IDX % (NN * NL * NS) ))
+D_IDX=$(( IDX / (NN * NA * NS) ))
+REM1=$(( IDX % (NN * NA * NS) ))
 
-N_IDX=$(( REM1 / (NL * NS) ))
-REM2=$(( REM1 % (NL * NS) ))
+N_IDX=$(( REM1 / (NA * NS) ))
+REM2=$(( REM1 % (NA * NS) ))
 
 ALPHA_IDX=$(( REM2 / NS ))
 SEED_IDX=$(( REM2 % NS ))
@@ -66,7 +66,7 @@ echo "========================================"
 # ===============================
 # Run experiment
 # ===============================
-srun python run_iid.py \
+srun python run_dirichlet.py \
     --D $D \
     --N $N \
     --N_val $N_VAL \
