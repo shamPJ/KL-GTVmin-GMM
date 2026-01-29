@@ -130,3 +130,40 @@ def er_adjacency_matrix(n_nodes, p, seed=None, directed=False):
     A_norm = A / row_sums
     
     return A_norm
+
+def generate_data_mean_shift(n_clients=3,
+                            n_samples=30,
+                            n_samples_val=500,
+                            n_features=2,
+                            n_clusters=3,
+                            seed=None,
+                            shift_scale=0.5):
+    if seed is not None:
+        np.random.seed(seed)
+    
+    n_total = n_clients*(n_samples+n_samples_val)
+    # Global dataset
+    X, y, means = make_blobs(n_samples=n_total,
+                      n_features=n_features,
+                      centers=n_clusters,
+                      return_centers=True,
+                      random_state=seed)
+    
+    # Datasets with mean shift
+    client_data,  client_labels, client_data_val, client_labels_val = [], [], [], []
+    shifts = shift_scale*np.random.randn(n_clients, n_clusters, n_features)
+    for c in range(n_clients):
+        Xi, yi = make_blobs(
+            n_samples=n_samples+n_samples_val,
+            n_features=n_features,
+            centers=means+shifts[c],
+            random_state=seed+c)
+
+        X_train, X_val, y_train, y_val = train_test_split(Xi, yi, test_size=n_samples_val, stratify=yi)
+        client_data.append(X_train)
+        client_data_val.append(X_val)
+        client_labels.append(y_train)
+        client_labels_val.append(y_val)
+        
+    return np.array(client_data), np.array(client_data_val), np.array(client_labels), np.array(client_labels_val), means
+
