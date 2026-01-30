@@ -5,7 +5,7 @@ import time
 import numpy as np
 import torch
 
-from data import generate_data_iid, er_adjacency_matrix
+from data import generate_cluster_dropout, er_adjacency_matrix
 from training import DiagGMM, run_federated_skl_gtvmin, centralized_gmm_baseline, local_gmm_baseline
 from metrics import est_error
 
@@ -21,17 +21,18 @@ def parse_args():
     parser.add_argument("--lrate", type=float, default=1e-3)
 
     # Experiment params
-    parser.add_argument("--D", type=int, default=2)
-    parser.add_argument("--N", type=int, default=10)
+    parser.add_argument("--D", type=int, default=4)
+    parser.add_argument("--N", type=int, default=50)
     parser.add_argument("--N_val", type=int, default=1000)
-    parser.add_argument("--K", type=int, default=3)
+    parser.add_argument("--K", type=int, default=6)
+    parser.add_argument("--keep_per_client", type=int, default=2)
     parser.add_argument("--n_clients", type=int, default=10)
-    parser.add_argument("--rounds", type=int, default=100)
+    parser.add_argument("--rounds", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
 
     # System
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--outdir", type=str, default="results_iid")
+    parser.add_argument("--outdir", type=str, default="results_cluster_drop")
 
     return parser.parse_args()
 
@@ -46,12 +47,13 @@ def run_experiment(args):
     # ----------------------
     # Data
     # ----------------------
-    client_data, client_data_val, client_labels, client_labels_val, means  = generate_data_iid(
+    client_data, client_data_val, client_labels, client_labels_val, means  = generate_cluster_dropout(
         n_clients=args.n_clients,
         n_samples=args.N,
         n_samples_val=args.N_val,
         n_features=args.D,
         n_clusters=args.K,
+        keep_per_client = args.keep_per_client,
         seed=args.seed
     )
 
@@ -151,6 +153,7 @@ def run_experiment(args):
         "D": args.D,
         "N": args.N,
         "K": args.K,
+        "keep_per_client": args.keep_per_client,
         "n_clients": args.n_clients,
         "lambda": args.reg_term,
         "lr": args.lrate,
