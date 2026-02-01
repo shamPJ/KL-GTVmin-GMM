@@ -1,0 +1,9 @@
+========================================
+Running experiment on GPU
+  D       = 4
+  N       = 10
+  lambda  = 0
+  seed    = 1
+  GPU     = 0
+========================================
+[DONE] Results saved to results_cluster_drop/D4_N10_lam0.0_seed1.json

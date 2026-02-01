@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/scratch/work/abduras1/KL-GTVmin-GMM/run_cluster_drop.py", line 8, in <module>
+    from data import generate_cluster_dropout, er_adjacency_matrix
+  File "/scratch/work/abduras1/KL-GTVmin-GMM/data.py", line 5, in <module>
+    import umap
+ModuleNotFoundError: No module named 'umap'
+srun: error: dgx8: task 0: Exited with exit code 1
+srun: Terminating StepId=15542963.0
