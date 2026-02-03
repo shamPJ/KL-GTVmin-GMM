@@ -17,7 +17,7 @@ source activate pytorch-env
 # ===============================
 # Sweep grids
 # ===============================
-D_LIST=(2 4 8)
+D_LIST=(2 5 10)
 N_LIST=(10 25 50 100)
 ALPHA_LIST=(0.2 1.0 10.0)
 SEED_LIST=(0 1 2 3 4 5 6 7 8 9)

@@ -81,7 +81,7 @@ def run_experiment(args):
     # ----------------------
     # Federated training
     # ----------------------
-    lmb = 0.5
+    lmb = 1
     start = time.time()
     fl_ll = run_federated_skl_gtvmin(
             A=A,
@@ -90,9 +90,9 @@ def run_experiment(args):
             models=models,
             rounds=args.rounds,
             lam=lmb,
-            M_self=512,
-            M_nbr=512,
-            local_steps=250,
+            M_self=100,
+            M_nbr=int(100/args.n_clients),
+            local_steps=100,
             lr=args.lrate,
             batch_size=256,
             device=args.device,
@@ -110,9 +110,9 @@ def run_experiment(args):
                 models=models_aug,
                 rounds=args.rounds,
                 lam=lmb,
-                M_self=512,
-                M_nbr=512,
-                local_steps=250,
+                M_self=100,
+                M_nbr=int(100/args.n_clients),
+                local_steps=100,
                 lr=args.lrate,
                 batch_size=256,
                 device=args.device,
