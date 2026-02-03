@@ -1,0 +1,10 @@
+========================================
+Running experiment on GPU
+  D       = 10
+  N       = 100
+  alpha  = 0.2
+  seed    = 5
+  GPU     = 0
+========================================
+ValueError
+[DONE] Results saved to results_dirichlet/D10_N100_alpha0.2_seed5.json
