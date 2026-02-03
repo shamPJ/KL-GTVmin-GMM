@@ -1,0 +1,42 @@
+
+	
+\begin{tikzpicture}
+		\begin{groupplot}[
+			group style={
+				group size=4 by 1, % 3 columns, 2 rows
+				horizontal sep=1.5cm,
+				vertical sep=2cm,
+%				y descriptions at=edge left,
+%				ylabels at=edge left,
+				x descriptions at=edge bottom,
+				xlabels at=edge bottom,
+				xticklabels at=edge bottom,
+%				yticklabels at=edge left,
+				group name=myplots
+			},
+			cycle list name=mycolors,
+			height=5cm,
+			width=5.5cm,
+			ticklabel style={font=\footnotesize},
+			ymajorgrids=true
+			]
+
+
+			\nextgroupplot[xlabel={\normalsize $d$}, xtick={2,5,10,15,20}, ylabel={\normalsize Log-likelihood}, axis lines=left, axis line style={-}, xmin=0]
+			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=1,y error index=2,col sep=comma]{results/processed_results/df_iid/Log-likelihood_lambda_0.0.csv};
+			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=3,y error index=4,col sep=comma]{results/processed_results/df_iid/Log-likelihood_lambda_0.0.csv};
+			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=5,y error index=6,col sep=comma]{results/processed_results/df_iid/Log-likelihood_lambda_0.0.csv};
+	
+			
+			% N_i = 10 cov err
+			\nextgroupplot[xlabel={\normalsize $d$}, xtick={2,5,10,15,20}, ylabel={\normalsize $\Sigma$ error}, axis lines=left, axis line style={-}, ymode=log, xmin=0,
+			legend style={draw=none, at={(-1.5,-0.3), font=\large}, anchor=north, legend columns=-1, nodes={scale=0.9}}]
+%			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=1,y error index=2,col sep=comma]{results/processed_results/df_clust/cov_err_Ni_10.csv};  \addlegendentry{GraphFed-EM}
+%			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=3,y error index=4,col sep=comma]{results/processed_results/df_clust/cov_err_Ni_10.csv};  \addlegendentry{Centralized}
+%			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=5,y error index=6,col sep=comma]{results/processed_results/df_clust/cov_err_Ni_10.csv};  \addlegendentry{Local}
+%			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=7,y error index=8,col sep=comma]{results/processed_results/df_clust/cov_err_Ni_10.csv}; \addlegendentry{FedGrEM}
+%			\addplot+ [thick, mark=square*, mark size=1.5pt, error bars/.cd, y dir=both, y explicit] table [x index=0,y index=9,y error index=10,col sep=comma]{results/processed_results/df_clust/cov_err_Ni_10.csv}; \addlegendentry{Oracle Pool}
+%		\end{groupplot}
+\end{tikzpicture}
+
+
