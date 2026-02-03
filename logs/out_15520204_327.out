@@ -1,9 +1,0 @@
-========================================
-Running experiment on GPU
-  D       = 8
-  N       = 50
-  shift_scale  = 2.0
-  seed    = 7
-  GPU     = 0
-========================================
-[DONE] Results saved to results_means_shift/D8_N50_shift_scale2.0_seed7.json

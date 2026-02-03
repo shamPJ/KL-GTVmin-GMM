@@ -17,7 +17,7 @@ source activate pytorch-env
 # ===============================
 # Sweep grids
 # ===============================
-D_LIST=(2 4 8 16)
+D_LIST=(2 5 10)
 N_LIST=(10 25 50 100)
 LAM_LIST=(0 0.5 1.0)
 SEED_LIST=(0 1 2 3 4 5 6 7 8 9)
@@ -26,7 +26,7 @@ LR=0.0005
 ROUNDS=100
 NCLIENTS=10
 N_VAL=1000
-K=6
+K=3
 
 # ===============================
 # Index mapping
@@ -66,7 +66,7 @@ echo "========================================"
 # ===============================
 # Run experiment
 # ===============================
-srun python run_cluster_drop.py \
+srun python run_iid.py \
     --D $D \
     --N $N \
     --N_val $N_VAL \

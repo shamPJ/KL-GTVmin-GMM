@@ -1,9 +1,0 @@
-========================================
-Running experiment on GPU
-  D       = 8
-  N       = 25
-  lambda  = 1.0
-  seed    = 0
-  GPU     = 0
-========================================
-[DONE] Results saved to results_iid/D8_N25_lam1.0_seed0.json
