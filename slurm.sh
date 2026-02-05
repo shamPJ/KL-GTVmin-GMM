@@ -26,7 +26,8 @@ LR=0.0005
 ROUNDS=100
 NCLIENTS=10
 N_VAL=1000
-K=3
+# K=3
+K=6 # for cluster drop exp
 
 # ===============================
 # Index mapping
@@ -66,7 +67,8 @@ echo "========================================"
 # ===============================
 # Run experiment
 # ===============================
-srun python run_iid.py \
+# srun python run_iid.py \
+srun python run_cluster_drop.py \
     --D $D \
     --N $N \
     --N_val $N_VAL \
