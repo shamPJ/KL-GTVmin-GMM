@@ -77,20 +77,18 @@ if __name__ == "__main__":
     algorithms_to_use = ["central", "local", "fl"]
 
     csv_files = [
-        "df_iid.csv",
-        # "df_priors.csv",
-        # "df_clust.csv",
+        # "df_iid.csv"
     ]
 
     for csv_path in csv_files:
         process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="lambda", x_var="N")
 
-    # csv_files = [
-    #     # "df_aggr_strength.csv"
-    # ]
+    csv_files = [
+        "df_lskew.csv"
+    ]
 
-    # for csv_path in csv_files:
-    #     process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="p_out", x_var="beta")
+    for csv_path in csv_files:
+        process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="alpha", x_var="N")
 
     # csv_files = [
     #     "df_data_sep.csv"
