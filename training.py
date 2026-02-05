@@ -23,7 +23,7 @@ class DiagGMM(nn.Module):
       log p(x) = log sum_k pi_k * N(x | mu_k, diag(std_k^2))
     """
 
-    def __init__(self, K: int, D: int, init_scale: float = 1.0):
+    def __init__(self, K: int, D: int, covariance_type: str = "diag", init_scale: float = 1.0):
         super().__init__()
         self.K = K
         self.D = D
@@ -31,98 +31,144 @@ class DiagGMM(nn.Module):
         # Initialize mixture weights uniform (logits=0), means random, std=1
         self.logits = nn.Parameter(torch.zeros(K))
         self.means = nn.Parameter(init_scale * torch.randn(K, D))
-        self.log_std = nn.Parameter(torch.zeros(K, D))
+        self.covariance_type = covariance_type
+
+        if covariance_type == "diag":
+            self.log_std = nn.Parameter(torch.zeros(K, D))
+        else:  # full covariance
+            self.raw_L = nn.Parameter(torch.zeros(K, D, D))
 
     @torch.no_grad()
     def initialize_params(self, X):
         X_np = X.detach().cpu().numpy()
-        # init means
+
+        # ---------- KMeans ----------
         kmeans = KMeans(n_clusters=self.K).fit(X_np)
+        labels = torch.tensor(kmeans.labels_, device=X.device)
         means = torch.tensor(kmeans.cluster_centers_, dtype=X.dtype, device=X.device)
 
-        # init mixture weights
-        labels = torch.tensor(kmeans.labels_, device=X.device, dtype=torch.long)
+        # ---------- mixture weights ----------
         counts = torch.bincount(labels, minlength=self.K).float()
         eps = 1e-8
         probs = (counts + eps) / (counts.sum() + eps * self.K)
 
-        # init cov
-        eps = 1e-6
-        vars = []
-        
-        for k in range(self.K):
-            cluster = X[kmeans.labels_ == k]
-            if len(cluster) > 0:
-                vars.append(cluster.var(dim=0, unbiased=False))
-            else:
-                vars.append(X.var(dim=0, unbiased=False))
-        
-        vars = torch.stack(vars)
         self.means.copy_(means)
         self.logits.copy_(torch.log(probs))
-        self.log_std.copy_(0.5 * torch.log(vars + eps))
-    
-    def mixture_weights(self) -> torch.Tensor:
-        """Return pi_k as a probability vector (K,)."""
-        return F.softmax(self.logits, dim=0)
+
+        # ---------- covariance ----------
+        eps_cov = 1e-6
+
+        if self.covariance_type == "diag":
+            vars = torch.zeros(self.K, self.D, device=X.device)
+
+            for k in range(self.K):
+                cluster = X[labels == k]
+                if cluster.shape[0] > 0:
+                    vars[k] = cluster.var(dim=0, unbiased=False)
+                else:
+                    vars[k] = X.var(dim=0, unbiased=False)
+
+            self.log_std.copy_(0.5 * torch.log(vars + eps_cov))
+
+        else:  # full covariance
+            for k in range(self.K):
+                cluster = X[labels == k]
+
+                if cluster.shape[0] > 1:
+                    cov = torch.cov(cluster.T, correction=0)
+                else:
+                    cov = torch.cov(X.T, correction=0)
+
+                cov = cov + eps_cov * torch.eye(self.D, device=X.device)
+
+                L = torch.linalg.cholesky(cov)
+
+                # store unconstrained Cholesky params
+                # We store the diagonal of the Cholesky factor in log-space (unconstrained),
+                # and exponentiate it every time we use the covariance (log-prob, sampling, etc.).
+                self.raw_L[k].copy_(
+                    torch.tril(L, -1) + # exclude main diagonal
+                    torch.diag(torch.log(torch.diagonal(L))) # log-parameterize the diagonal
+                )
 
     def log_prob_components(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Per-component log density for each x.
-
-        Args:
-          x: (B, D)
-        Returns:
-          log N_k(x): (B, K)
-        """
         B, D = x.shape
         assert D == self.D
+        x_e = x[:, None, :]              # (B, 1, D)
+        mu = self.means[None, :, :]      # (1, K, D)
 
-        std = torch.exp(self.log_std) + 1e-6         # (K, D)
-        var = std * std                              # (K, D)
-
-        # Expand to broadcast:
-        x_e = x[:, None, :]                          # (B, 1, D)
-        mu = self.means[None, :, :]                  # (1, K, D)
-        var_e = var[None, :, :]                      # (1, K, D)
-        log_std_e = self.log_std[None, :, :]         # (1, K, D)
-
-        # log N(x | mu, diag(var)) = -0.5*( sum_d ((x-mu)^2/var) + sum_d log(2*pi*var) )
-        quad = ((x_e - mu) ** 2) / var_e             # (B, K, D)
-        log_var = 2.0 * log_std_e                    # log(var) = 2 log_std
-        const = math.log(2.0 * math.pi)
-
-        return -0.5 * (quad.sum(dim=-1) + (log_var + const).sum(dim=-1))  # (B, K)
+        if self.covariance_type == "diag":
+            # log N(x | mu, diag(var)) = -0.5*( sum_d ((x-mu)^2/var) + sum_d log(2*pi*var) )
+            std = torch.exp(self.log_std) 
+            var = std ** 2 + 1e-6
+            quad = ((x_e - mu) ** 2) / var[None, :, :] # (B, K, D) - (1, K, D)
+            log_var = torch.log(var)[None, :, :] * 2
+            const = D * math.log(2 * math.pi)
+            return -0.5 * (quad.sum(dim=-1) + log_var.sum(dim=-1) + const)
+        else:  # full
+            # \Sigma = LL^T -> det(\Sigma) = det(LL^T) = det(L)det(L^T)
+            # For a triangular matrix, the determinant is the product of the diagonal.
+            L = torch.tril(self.raw_L)
+            # extract the diagonal elements from the last two dimensions of a tensor, 
+            # while keeping the other batch dimensions intact.
+            diag = torch.diagonal(L, dim1=-2, dim2=-1) # Shape: (K, D) for K components
+            # zero out dig -> L - torch.diag_embed(diag) 
+            # torch.exp(diag) guarantees all diagonal entries are strictly positive
+            L = L - torch.diag_embed(diag) + torch.diag_embed(torch.exp(diag))
+            diff = x_e - mu
+            # solve y=L^{-1}(x-mu_k) --> (B,K,D)
+            y = torch.linalg.solve_triangular(L[None, :, :, :], diff[..., None], upper=False).squeeze(-1)
+            # Mahalanobis distance --> (B,K)
+            quad = (y ** 2).sum(dim=-1)
+            log_det = 2.0 * torch.log(torch.diagonal(L, dim1=-2, dim2=-1)).sum(dim=-1)
+            const = D * math.log(2 * math.pi)
+            return -0.5 * (quad + log_det[None, :] + const)
 
     def log_prob(self, x: torch.Tensor) -> torch.Tensor:
         """Mixture log probability log p(x) for each x. Returns shape (B,)."""
         log_pi = F.log_softmax(self.logits, dim=0)            # (K,)
         logp_comp = self.log_prob_components(x)               # (B, K)
         return torch.logsumexp(logp_comp + log_pi[None, :], dim=1)
-
+    
     @torch.no_grad()
     def sample(self, n: int) -> torch.Tensor:
-        """
-        Sample n points from the mixture. Returns (n, D).
-        """
-        pi = self.mixture_weights()                           # (K,)
-        comp = torch.distributions.Categorical(probs=pi).sample((n,))  # (n,)
+        pi = F.softmax(self.logits, dim=0)
+        comp = torch.distributions.Categorical(probs=pi).sample((n,))
+        mu = self.means[comp]
 
-        std = torch.exp(self.log_std) + 1e-6                  # (K, D)
-        eps = torch.randn(n, self.D, device=self.means.device)
-
-        mu = self.means[comp, :]                              # (n, D)
-        s = std[comp, :]                                      # (n, D)
-        return mu + s * eps
-
+        if self.covariance_type == "diag":
+            std = torch.exp(self.log_std) + 1e-6
+            s = std[comp]
+            eps = torch.randn(n, self.D, device=mu.device)
+            return mu + s * eps
+        else:
+            L = torch.tril(self.raw_L)
+            diag = torch.diagonal(L, dim1=-2, dim2=-1)
+            # ensure that evalues are positive
+            L = L - torch.diag_embed(diag) + torch.diag_embed(torch.exp(diag))
+            Lk = L[comp]
+            eps = torch.randn(n, self.D, device=mu.device)
+            return mu + torch.einsum("nij,nj->ni", Lk, eps)
 
 @torch.no_grad()
-def clone_gmm(model: DiagGMM) -> DiagGMM:
+def clone_gmm(model):
     """Deep-copy GMM parameters (for synchronous rounds / frozen sampling)."""
-    out = DiagGMM(model.K, model.D).to(model.means.device)
+    out = type(model)(
+        K=model.K,
+        D=model.D,
+        covariance_type=model.covariance_type,
+    ).to(model.means.device)
+
+    # shared params
     out.logits.copy_(model.logits)
     out.means.copy_(model.means)
-    out.log_std.copy_(model.log_std)
+
+    # covariance-specific params
+    if model.covariance_type == "diag":
+        out.log_std.copy_(model.log_std)
+    else:  # full
+        out.raw_L.copy_(model.raw_L)
+
     return out
 
 # ============================================================
@@ -251,7 +297,11 @@ def local_update_emm(
 
         # Numerical safety: clamp log_std (prevents near-singular covariances)
         with torch.no_grad():
-            gmm_i.log_std.clamp_(min=-5.0, max=5.0)
+            if gmm_i.covariance_type == "diag":
+                gmm_i.log_std.clamp_(min=-5.0, max=5.0)
+            if gmm_i.covariance_type == "full":
+                diag = torch.diagonal(gmm_i.raw_L, dim1=-2, dim2=-1)
+                diag.clamp_(min=-10.0, max=10.0)
 
     return gmm_i
 
@@ -344,6 +394,7 @@ def centralized_gmm_baseline(
     X: torch.Tensor,
     X_val: torch.Tensor,
     K: int,
+    covariance_type="diag",
     seed: int = 0,
 ):
     """
@@ -358,7 +409,7 @@ def centralized_gmm_baseline(
 
     gmm = GaussianMixture(
         n_components=K,
-        covariance_type="diag",
+        covariance_type=covariance_type,
         random_state=seed,
         max_iter=20,
     )
@@ -377,6 +428,7 @@ def local_gmm_baseline(
     X: torch.Tensor,
     X_val: torch.Tensor,
     K: int,
+    covariance_type="diag",
     seed: int = 0,
 ):
     """
@@ -392,7 +444,7 @@ def local_gmm_baseline(
     for i in range(n_clients):
         gmm = GaussianMixture(
             n_components=K,
-            covariance_type="diag",
+            covariance_type=covariance_type,
             random_state=seed,
             max_iter=20,
         )

@@ -78,22 +78,23 @@ if __name__ == "__main__":
 
     csv_files = [
         # "df_iid.csv"
+        # "df_cluster_drop.csv"
     ]
 
     for csv_path in csv_files:
         process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="lambda", x_var="N")
 
     csv_files = [
-        "df_lskew.csv"
+        # "df_lskew.csv"
     ]
 
     for csv_path in csv_files:
         process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="alpha", x_var="N")
 
-    # csv_files = [
-    #     "df_data_sep.csv"
-    # ]
+    csv_files = [
+        "df_shift.csv"
+    ]
 
-    # for csv_path in csv_files:
-    #     process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="cluster_separation", x_var="local_spread")
+    for csv_path in csv_files:
+        process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="shift_scale", x_var="N")
 
