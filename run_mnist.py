@@ -142,11 +142,13 @@ def run_experiment(args):
     NMI_local = np.zeros((args.n_clients))
     NMI_central = np.zeros((args.n_clients))
     for i, gmm in enumerate(gmm_l.values()):
-        y_preds_l = gmm.predict(client_data_val[i])
-        y_preds_c = gmm_c.predict(client_data_val[i])
+        X = client_data_val[i].detach().cpu().numpy()
+        y_preds_l = gmm.predict(X)
+        y_preds_c = gmm_c.predict(X)
         
-        NMI_local[i] = normalized_mutual_info_score(client_labels_val[i], y_preds_l)
-        NMI_central[i] = normalized_mutual_info_score(client_labels_val[i], y_preds_c)
+        y = client_labels_val[i]
+        NMI_local[i] = normalized_mutual_info_score(y.reshape(-1), y_preds_l)
+        NMI_central[i] = normalized_mutual_info_score(y.reshape(-1), y_preds_c)
 
     result = {
         "D": args.D,

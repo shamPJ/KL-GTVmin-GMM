@@ -1,9 +1,0 @@
-========================================
-Running experiment on GPU
-  D       = 2
-  N       = 100
-  alpha  = 10.0
-  seed    = 9
-  GPU     = 0
-========================================
-[DONE] Results saved to results_dirichlet/D2_N100_alpha10.0_seed9.json
