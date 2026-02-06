@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     csv_files = [
         # "df_iid.csv"
-        # "df_cluster_drop.csv"
+        "df_cluster_drop.csv"
     ]
 
     for csv_path in csv_files:
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         process_csv(csv_path, base_results_dir, algorithms_to_use, col_var="alpha", x_var="N")
 
     csv_files = [
-        "df_shift.csv"
+        # "df_shift.csv"
     ]
 
     for csv_path in csv_files:

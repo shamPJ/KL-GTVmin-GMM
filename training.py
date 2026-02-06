@@ -115,12 +115,20 @@ class DiagGMM(nn.Module):
             # zero out dig -> L - torch.diag_embed(diag) 
             # torch.exp(diag) guarantees all diagonal entries are strictly positive
             L = L - torch.diag_embed(diag) + torch.diag_embed(torch.exp(diag))
+            # Build covariance
+            Sigma = L @ L.transpose(-1, -2)
+            # Stabilize
+            eps = 1e-4
+            Sigma = Sigma + eps * torch.eye(self.D, device=Sigma.device)
+            # Re-factor stabilized covariance
+            L_stable = torch.linalg.cholesky(Sigma)
+
             diff = x_e - mu
             # solve y=L^{-1}(x-mu_k) --> (B,K,D)
-            y = torch.linalg.solve_triangular(L[None, :, :, :], diff[..., None], upper=False).squeeze(-1)
+            y = torch.linalg.solve_triangular(L_stable[None, :, :, :], diff[..., None], upper=False).squeeze(-1)
             # Mahalanobis distance --> (B,K)
             quad = (y ** 2).sum(dim=-1)
-            log_det = 2.0 * torch.log(torch.diagonal(L, dim1=-2, dim2=-1)).sum(dim=-1)
+            log_det = 2.0 * torch.log(torch.diagonal(L_stable, dim1=-2, dim2=-1)).sum(dim=-1)
             const = D * math.log(2 * math.pi)
             return -0.5 * (quad + log_det[None, :] + const)
 
@@ -146,9 +154,16 @@ class DiagGMM(nn.Module):
             diag = torch.diagonal(L, dim1=-2, dim2=-1)
             # ensure that evalues are positive
             L = L - torch.diag_embed(diag) + torch.diag_embed(torch.exp(diag))
-            Lk = L[comp]
-            eps = torch.randn(n, self.D, device=mu.device)
-            return mu + torch.einsum("nij,nj->ni", Lk, eps)
+            Sigma = L @ L.transpose(-1, -2)
+            # Stabilize
+            eps = 1e-4
+            Sigma = Sigma + eps * torch.eye(self.D, device=Sigma.device)
+
+            dist = torch.distributions.MultivariateNormal(
+                loc=mu,
+                covariance_matrix=Sigma[comp]
+            )
+            return dist.sample()
 
 @torch.no_grad()
 def clone_gmm(model):
@@ -382,7 +397,7 @@ def run_federated_skl_gtvmin(
             for i in range(N):
                 ll.append(models[i].log_prob(X_val[i]).mean().item())
             avg_ll = sum(ll) / len(ll)
-            # print(f"[round {t+1:02d}/{rounds}] avg validation log-likelihood = {avg_ll:.3f}")
+            print(f"[round {t+1:02d}/{rounds}] avg validation log-likelihood = {avg_ll:.3f}")
     
     return avg_ll
 
