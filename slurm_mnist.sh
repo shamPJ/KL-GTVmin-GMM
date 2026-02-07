@@ -4,7 +4,7 @@
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=10
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-89
+#SBATCH --array=0-449
 #SBATCH --output=logs/out_%A_%a.out
 #SBATCH --error=logs/err_%A_%a.err
 
@@ -18,7 +18,7 @@ source activate pytorch-env
 # Sweep grids
 # ===============================
 D_LIST=(2 5 10)
-N_LIST=(100)
+N_LIST=(30 50 100 200 300)
 ALPHA_LIST=(0.2 1.0 10.0)
 SEED_LIST=(0 1 2 3 4 5 6 7 8 9)
 
@@ -38,7 +38,7 @@ NN=${#N_LIST[@]}
 NA=${#ALPHA_LIST[@]}
 NS=${#SEED_LIST[@]}
 
-# Total jobs = 3 * 1 * 3 * 10 = 90
+# Total jobs = 3 * 5 * 3 * 10 = 450
 
 D_IDX=$(( IDX / (NN * NA * NS) ))
 REM1=$(( IDX % (NN * NA * NS) ))
