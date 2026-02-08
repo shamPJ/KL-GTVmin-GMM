@@ -4,11 +4,10 @@ import os
 import time
 import numpy as np
 import torch
-from sklearn.metrics.cluster import normalized_mutual_info_score
+from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_mutual_info_score
 
 from data import generate_data_mnist, er_adjacency_matrix
 from training import DiagGMM, run_federated_skl_gtvmin, centralized_gmm_baseline, local_gmm_baseline
-from metrics import est_error
 
 # ============================================================
 # Argument parsing
@@ -17,12 +16,12 @@ def parse_args():
     parser = argparse.ArgumentParser("Federated GMM experiments")
 
     # Sweep-controlled params (from SLURM)
-    parser.add_argument("--alpha", type=float, default=0.3, help="dirichlet coeff")
+    parser.add_argument("--alpha", type=float, default=0.2, help="dirichlet coeff")
     parser.add_argument("--p_in", type=float, default=0.8)
-    parser.add_argument("--lrate", type=float, default=1e-3)
+    parser.add_argument("--lrate", type=float, default=5e-4)
 
     # Experiment params
-    parser.add_argument("--D", type=int, default=2)
+    parser.add_argument("--D", type=int, default=10)
     parser.add_argument("--N", type=int, default=100)
     parser.add_argument("--N_val", type=int, default=1000)
     parser.add_argument("--K", type=int, default=10)
@@ -55,6 +54,10 @@ def run_experiment(args):
         n_clusters=args.K,
         seed=args.seed,
         alpha=args.alpha)
+
+    # Pool all data
+    X_val_all = client_data_val.reshape(args.n_clients*args.N_val, args.D)
+    y_val_all = client_labels_val.reshape(args.n_clients*args.N_val,)
 
     A = er_adjacency_matrix(
         args.n_clients,
@@ -127,28 +130,30 @@ def run_experiment(args):
     # ----------------------
     # Errors
     # ----------------------
-    NMI = np.zeros((args.n_clients))
+    NMI, AMI = np.zeros((args.n_clients)), np.zeros((args.n_clients))
+    X_val_all_torch = torch.from_numpy(X_val_all).to(args.device)
     for i, m in enumerate(models.values()):
-        y_probs = m.log_prob_components(client_data_val[i]) # (B, K)
+        y_probs = m.log_prob_components(X_val_all_torch) # (B, K)
         y_preds = np.argmax(y_probs.detach().cpu().numpy(), axis=1)
-        NMI[i] = normalized_mutual_info_score(client_labels_val[i], y_preds)
+        NMI[i] = normalized_mutual_info_score(y_val_all, y_preds)
+        AMI[i] = adjusted_mutual_info_score(y_val_all, y_preds)
 
-    NMI_aug = np.zeros((args.n_clients))
+    NMI_aug, AMI_aug = np.zeros((args.n_clients)), np.zeros((args.n_clients))
     for i, m in enumerate(models_aug.values()):
-        y_probs = m.log_prob_components(client_data_val[i]) # (B, K)
+        y_probs = m.log_prob_components(X_val_all_torch) # (B, K)
         y_preds = np.argmax(y_probs.detach().cpu().numpy(), axis=1)
-        NMI_aug[i] = normalized_mutual_info_score(client_labels_val[i], y_preds)
+        NMI_aug[i] = normalized_mutual_info_score(y_val_all, y_preds)
+        AMI_aug[i] = adjusted_mutual_info_score(y_val_all, y_preds)
 
-    NMI_local = np.zeros((args.n_clients))
-    NMI_central = np.zeros((args.n_clients))
+    y_preds_c = gmm_c.predict(X_val_all)
+    NMI_central = normalized_mutual_info_score(y_val_all, y_preds_c)
+    AMI_central = adjusted_mutual_info_score(y_val_all, y_preds_c)
+
+    NMI_local, AMI_local = np.zeros((args.n_clients)), np.zeros((args.n_clients))
     for i, gmm in enumerate(gmm_l.values()):
-        X = client_data_val[i].detach().cpu().numpy()
-        y_preds_l = gmm.predict(X)
-        y_preds_c = gmm_c.predict(X)
-        
-        y = client_labels_val[i]
-        NMI_local[i] = normalized_mutual_info_score(y.reshape(-1), y_preds_l)
-        NMI_central[i] = normalized_mutual_info_score(y.reshape(-1), y_preds_c)
+        y_preds_l = gmm.predict(X_val_all)
+        NMI_local[i] = normalized_mutual_info_score(y_val_all, y_preds_l)
+        AMI_local[i] = adjusted_mutual_info_score(y_val_all, y_preds_l)
 
     result = {
         "D": args.D,
@@ -163,10 +168,14 @@ def run_experiment(args):
         "ll_l": avg_ll_l,
         "fl_ll": fl_ll,
         "fl_aug_ll": fl_aug_ll,
-        "centralized_nmi": np.mean(NMI_central),
+        "centralized_nmi": NMI_central,
+        "centralized_ami": AMI_central,
         "local_nmi": np.mean(NMI_local),
+        "local_ami": np.mean(AMI_local),
         "fl_nmi": np.mean(NMI),
+        "fl_ami": np.mean(AMI),
         "fl_aug_nmi": np.mean(NMI_aug),
+        "fl_aug_ami": np.mean(AMI_aug),
         "runtime_sec": fl_time,
     }
 
