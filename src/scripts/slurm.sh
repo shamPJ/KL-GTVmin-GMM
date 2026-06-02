@@ -14,6 +14,8 @@
 module load mamba
 source activate pytorch-env
 
+export PYTHONPATH=$PYTHONPATH:$PWD
+
 # ===============================
 # Sweep grids
 # ===============================

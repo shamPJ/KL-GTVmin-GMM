@@ -190,7 +190,7 @@ def clone_gmm(model):
 # 3) Local SKL surrogate loss (paper-close structure)
 # ============================================================
 def local_skl_surrogate_loss(
-    gmm_i: DiagGMM,
+    gmm_i: GMM_torch,
     x_private: torch.Tensor,
     x_nbr_list: List[torch.Tensor],
     x_self: torch.Tensor,
@@ -234,9 +234,9 @@ def local_skl_surrogate_loss(
 # 4) One node update (gradient-based "EMM" / GEM-like in spirit)
 # ============================================================
 def local_update_emm(
-    gmm_i: DiagGMM,
-    gmm_i_prev: DiagGMM,
-    neighbor_models_prev: List[DiagGMM],
+    gmm_i: GMM_torch,
+    gmm_i_prev: GMM_torch,
+    neighbor_models_prev: List[GMM_torch],
     x_private: torch.Tensor,
     gamma_list: List[float],
     delta_list: List[float],
@@ -251,7 +251,7 @@ def local_update_emm(
     batch_size: int,
     device: str,
     use_forward_term: bool = True,
-) -> DiagGMM:
+) -> GMM_torch:
     """
     Perform a local update of theta_i by minimizing the SKL surrogate
     using gradient-based optimization in PyTorch.
@@ -321,22 +321,11 @@ def local_update_emm(
     return gmm_i
 
 # ============================================================
-# 5) Synchronous FL rounds (paper-like)
+# 5) Synchronous FL rounds
 # ============================================================
 def run(
-    A: np.ndarray,
-    X: torch.Tensor,
-    X_val: torch.Tensor,
-    models: Dict[int, DiagGMM],
-    rounds: int = 10,
-    lam: float = 0.25,
-    M_self: int = 512,
-    M_nbr: int = 512,
-    local_steps: int = 200,
-    lr: float = 5e-3,
-    batch_size: int = 256,
-    device: str = "cpu",
-    use_forward_term: bool = True,
+        args,
+        data
 ):
     """
     Synchronous FL loop:
@@ -350,9 +339,30 @@ def run(
     The coupling parameter lam corresponds to the paper's regularization parameter (lambda / alpha).
     """
 
+    # unpack data
+    X = data["X"]
+    X_val = data["X_val"]
+    A = data["A"]
+
+    # unpack args
+    rounds = args.rounds
+    lam = args.reg_term
+    M_self = args.m_self
+    M_nbr = args.m_nbr
+    local_steps = args.local_steps
+    lr = args.lrate
+    batch_size = args.batch_size
+    device = args.device
+    use_forward_term = args.use_forward_term   
+
     # Init params
-    for i, model in models.items():
-        model.initialize_params(X[i])
+    N = A.shape[0]
+    models = {}
+
+    for i in range(N):
+        gmm = GMM_torch(K=K, D=D).to(device)
+        gmm.initialize_params(X[i])
+        models[i] = gmm
 
     ll_log = np.zeros((rounds,))
     for t in range(rounds):
@@ -360,7 +370,6 @@ def run(
         prev = {i: clone_gmm(m).to(device) for i, m in models.items()}
 
         # Update nodes (can be parallelized; here sequential for simplicity)
-        N = A.shape[0]
         for i in range(N):
             nbrs = np.where(A[i] != 0)[0]
             a_ij = A[i][nbrs]
