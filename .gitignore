@@ -207,3 +207,13 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 logs/
+results/results_mnist/
+results/results_dirichlet/
+results/results_dirichlet_/
+results/results_var/
+results/results_cluster_drop/
+results/results_iid/
+results/results_means_shift/
+results/processed_results/
+
+
