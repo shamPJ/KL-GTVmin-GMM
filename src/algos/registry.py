@@ -13,3 +13,25 @@ def get_algo(name):
         return run
 
     raise ValueError(f"Unknown algo: {name}")
+
+ALGO_ARG_MAP = {
+    "distrGTVMinKL": [
+        "lrate",
+        "reg_term",
+        "rounds",
+        "local_steps",
+        "batch_size",
+        "m_self",
+        "m_nbr",
+        "use_forward_term",
+        "device",
+        "K",
+        "D",
+        "cov"
+    ],
+    "kmeans": [
+        "rounds",
+        "seed",
+        "device",
+    ],
+}

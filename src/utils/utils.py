@@ -1,6 +1,34 @@
 import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
+from sklearn.cluster import KMeans
+
+def save_metrics(ll_rounds, mse_w, path):
+    rows = []
+
+    # LL over rounds
+    if ll_rounds is not None:
+        for t, v in enumerate(np.asarray(ll_rounds)):
+            rows.append(["LL", t, float(v)])
+
+    # MSE per client
+    if mse_w is not None:
+        for i, v in enumerate(np.asarray(mse_w)):
+            rows.append(["MSE", i, float(v)])
+
+    rows = np.array(rows, dtype=object)
+
+    np.savetxt(
+        path,
+        rows,
+        delimiter=",",
+        fmt="%s",
+        header="type,index,value",
+        comments=""
+    )
+
+def filter_args(args, allowed_keys):
+    return {k: getattr(args, k) for k in allowed_keys if hasattr(args, k)}
 
 def to_numpy(x: torch.Tensor) -> np.ndarray:
     """Detach torch tensor and move to NumPy."""

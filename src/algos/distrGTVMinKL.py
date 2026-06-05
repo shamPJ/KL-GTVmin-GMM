@@ -2,14 +2,12 @@ import math
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
+from sklearn.metrics import normalized_mutual_info_score
+from sklearn.metrics import adjusted_mutual_info_score
 from typing import Dict, List, Optional, Tuple
 import torch.nn.functional as F
 from torch import nn
 
-# ============================================================
-# 1) GMM model 
-# ============================================================
 class GMM_torch(nn.Module):
     """
     K-component Gaussian mixture model implemented in PyTorch.
@@ -63,10 +61,11 @@ class GMM_torch(nn.Module):
 
             for k in range(self.K):
                 cluster = X[labels == k]
+
                 if cluster.shape[0] > 0:
-                    vars[k] = cluster.var(dim=0, unbiased=False)
+                    vars[k] = cluster.var(dim=0, correction=0)
                 else:
-                    vars[k] = X.var(dim=0, unbiased=False)
+                    vars[k] = X.var(dim=0, correction=0)
 
             self.log_std.copy_(0.5 * torch.log(vars + eps_cov))
 
@@ -79,13 +78,15 @@ class GMM_torch(nn.Module):
                 else:
                     cov = torch.cov(X.T, correction=0)
 
+                # regularize covariance by adding small value to diagonal (--> all eigenvalues > 0)
                 cov = cov + eps_cov * torch.eye(self.D, device=X.device)
 
-                L = torch.linalg.cholesky(cov)
+                L = torch.linalg.cholesky(cov) # \Sigma = LL^T, L is lower-triangular, works for PD symm matrix
 
                 # store unconstrained Cholesky params
                 # We store the diagonal of the Cholesky factor in log-space (unconstrained),
                 # and exponentiate it every time we use the covariance (log-prob, sampling, etc.).
+                # log|LL^T| = 2*sum(log(diag(L)))
                 self.raw_L[k].copy_(
                     torch.tril(L, -1) + # exclude main diagonal
                     torch.diag(torch.log(torch.diagonal(L))) # log-parameterize the diagonal
@@ -99,32 +100,32 @@ class GMM_torch(nn.Module):
 
         if self.covariance_type == "diag":
             # log N(x | mu, diag(var)) = -0.5*( sum_d ((x-mu)^2/var) + sum_d log(2*pi*var) )
-            std = torch.exp(self.log_std) 
-            var = std ** 2 + 1e-6
-            quad = ((x_e - mu) ** 2) / var[None, :, :] # (B, K, D) - (1, K, D)
-            log_var = torch.log(var)[None, :, :] * 2
+            log_var = 2.0 * self.log_std
+            quad = ((x_e - mu) ** 2) * torch.exp(-log_var)[None, :, :] # (B, K, D) - (1, K, D)
             const = D * math.log(2 * math.pi)
-            return -0.5 * (quad.sum(dim=-1) + log_var.sum(dim=-1) + const)
+            return -0.5 * (quad.sum(dim=-1) + log_var[None, :, :].sum(dim=-1) + const)
         else:  # full
             # \Sigma = LL^T -> det(\Sigma) = det(LL^T) = det(L)det(L^T)
             # For a triangular matrix, the determinant is the product of the diagonal.
-            L = torch.tril(self.raw_L)
+            L = torch.tril(self.raw_L) # shape (K, D, D)
             # extract the diagonal elements from the last two dimensions of a tensor, 
             # while keeping the other batch dimensions intact.
             diag = torch.diagonal(L, dim1=-2, dim2=-1) # Shape: (K, D) for K components
             # zero out dig -> L - torch.diag_embed(diag) 
             # torch.exp(diag) guarantees all diagonal entries are strictly positive
+            # note, that we store the diagonal in log-space, thus use of exp(diag)
             L = L - torch.diag_embed(diag) + torch.diag_embed(torch.exp(diag))
             # Build covariance
             Sigma = L @ L.transpose(-1, -2)
             # Stabilize
-            eps = 1e-4
+            eps = 1e-4 # set higher than eps_cov used to do Cholesky/inversion 
             Sigma = Sigma + eps * torch.eye(self.D, device=Sigma.device)
             # Re-factor stabilized covariance
             L_stable = torch.linalg.cholesky(Sigma)
 
             diff = x_e - mu
             # solve y=L^{-1}(x-mu_k) --> (B,K,D)
+            # shapes --> L: (K,D,D), diff: (B,K,D) --> unsqueeze L to (1,K,D,D) and diff to (B,K,D,1) 
             y = torch.linalg.solve_triangular(L_stable[None, :, :, :], diff[..., None], upper=False).squeeze(-1)
             # Mahalanobis distance --> (B,K)
             quad = (y ** 2).sum(dim=-1)
@@ -164,6 +165,14 @@ class GMM_torch(nn.Module):
                 covariance_matrix=Sigma[comp]
             )
             return dist.sample()
+        
+    @torch.no_grad()  
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict hard cluster assignments for each x. Returns shape (B,)."""
+        log_pi = F.log_softmax(self.logits, dim=0)            # (K,)
+        logp_comp = self.log_prob_components(x)               # (B, K)
+        logp = logp_comp + log_pi[None, :]
+        return torch.argmax(logp, dim=1)
 
 @torch.no_grad()
 def clone_gmm(model):
@@ -186,62 +195,61 @@ def clone_gmm(model):
 
     return out
 
-# ============================================================
-# 3) Local SKL surrogate loss (paper-close structure)
-# ============================================================
+# ============================
+# Local SKL surrogate loss 
+# ============================
 def local_skl_surrogate_loss(
     gmm_i: GMM_torch,
-    x_private: torch.Tensor,
+    x_local: torch.Tensor,
     x_nbr_list: List[torch.Tensor],
     x_self: torch.Tensor,
     beta_i: float,
     gamma_list: List[float],
     delta_list: List[float],
-    use_forward_term: bool = True,
+    use_self_term: bool = True,
 ) -> torch.Tensor:
     """
     Local surrogate objective to MINIMIZE:
 
-      beta_i * E_{x in private}[ -log p_i(x) ]
-    + sum_j gamma_ij * E_{x~p_j^t}[ -log p_i(x) ]              (reverse KL contribution)
-    + sum_j delta_ij * E_{x~p_i^t}[ +log p_i(x) ]              (forward KL majorization)
+      beta_i * E_{x in local}[ -log p_i(x) ]
+    + sum_j gamma_ij * E_{x~p_j^t}[ -log p_i(x) ]              (nbr KL)
+    + sum_j delta_ij * E_{x~p_i^t}[ +log p_i(x) ]              (self KL)
 
-    If use_forward_term=False, we drop the last term (baseline: "augmented dataset MLE-like").
+    If use_self_term=False, we drop the last term (i.e. augmented dataset).
     """
     device = gmm_i.means.device
 
-    # (A) private negative log-likelihood
-    nll_priv = (-gmm_i.log_prob(x_private).mean()) if x_private.numel() > 0 else torch.tensor(0.0, device=device)
+    # (A) local NLL
+    nll_i = -gmm_i.log_prob(x_local).mean()
 
-    # (B) neighbor negative log-likelihoods (cross-entropy pull)
+    # (B) neighbor NLL (cross-entropy pull)
     nll_nbr = torch.tensor(0.0, device=device)
     for x_nbr, gamma in zip(x_nbr_list, gamma_list):
         if x_nbr.numel() > 0 and gamma != 0.0:
             nll_nbr = nll_nbr + float(gamma) * (-gmm_i.log_prob(x_nbr).mean())
 
-    # (C) forward KL majorization term via frozen self-samples
+    # (C) "self" term via frozen self-samples
     #     This is +log p_i (not -log p_i), so it is NOT a standard MLE term.
     self_term = torch.tensor(0.0, device=device)
-    if use_forward_term and x_self.numel() > 0:
+    if use_self_term and x_self.numel() > 0:
         delta_sum = float(sum(delta_list))
         if delta_sum != 0.0:
             self_term = delta_sum * (gmm_i.log_prob(x_self).mean())
 
-    return float(beta_i) * nll_priv + nll_nbr + self_term
+    return float(beta_i) * nll_i + nll_nbr + self_term
 
 
 # ============================================================
-# 4) One node update (gradient-based "EMM" / GEM-like in spirit)
+# 4) One node update (gradient-based EM updates)
 # ============================================================
-def local_update_emm(
+def local_update(
     gmm_i: GMM_torch,
     gmm_i_prev: GMM_torch,
     neighbor_models_prev: List[GMM_torch],
-    x_private: torch.Tensor,
+    x_local: torch.Tensor,
     gamma_list: List[float],
     delta_list: List[float],
     beta_i: float,
-    lam: float,
     # sampling
     M_self: int,
     M_nbr: int,
@@ -250,7 +258,7 @@ def local_update_emm(
     lr: float,
     batch_size: int,
     device: str,
-    use_forward_term: bool = True,
+    use_self_term: bool = True,
 ) -> GMM_torch:
     """
     Perform a local update of theta_i by minimizing the SKL surrogate
@@ -261,9 +269,9 @@ def local_update_emm(
     """
     gmm_i = gmm_i.to(device)
     gmm_i_prev = gmm_i_prev.to(device)
-    x_private = x_private.to(device)
+    x_local = x_local.to(device)
 
-    # Generate frozen sample pools (paper: MC approximation of KL terms)
+    # Sample from `fixed` distr's
     with torch.no_grad():
         x_self = gmm_i_prev.sample(M_self).to(device)
         x_nbr_list = [m.sample(M_nbr) for m in neighbor_models_prev]
@@ -271,19 +279,16 @@ def local_update_emm(
     # Optimizer for the local surrogate
     opt = torch.optim.Adam(gmm_i.parameters(), lr=lr)
 
-    N_priv = x_private.shape[0]
+    N_i = x_local.shape[0]
     N_self = x_self.shape[0]
     N_nbrs = [x.shape[0] for x in x_nbr_list]
 
     for _ in range(steps):
         opt.zero_grad(set_to_none=True)
 
-        # Mini-batch from private data
-        if N_priv > 0:
-            idx = torch.randint(0, N_priv, (min(batch_size, N_priv),), device=device)
-            xb_priv = x_private[idx]
-        else:
-            xb_priv = x_private
+        # Mini-batch from local data
+        idx = torch.randint(0, N_i, (min(batch_size, N_i),), device=device)
+        xb_local = x_local[idx]
 
         # Mini-batch from self-samples
         idx = torch.randint(0, N_self, (min(batch_size, N_self),), device=device)
@@ -298,13 +303,13 @@ def local_update_emm(
         # Surrogate loss
         loss = local_skl_surrogate_loss(
             gmm_i=gmm_i,
-            x_private=xb_priv,
+            x_local=xb_local,
             x_nbr_list=xb_nbr_list,
             x_self=xb_self,
             beta_i=beta_i,
             gamma_list=gamma_list,
             delta_list=delta_list,
-            use_forward_term=use_forward_term,
+            use_self_term=use_self_term,
         )
 
         loss.backward()
@@ -331,20 +336,24 @@ def run(
     Synchronous FL loop:
       - At round t, freeze all models -> {theta_i^t}
       - Each node i updates theta_i^{t+1} using:
-            private data D_i
+            local data D_i
             neighbor samples from {theta_j^t, j in N(i)}
             self samples from theta_i^t
-        and paper-close weights beta_i, gamma_ij, delta_ij.
+        and weights for each term beta_i, gamma_ij, delta_ij.
 
     The coupling parameter lam corresponds to the paper's regularization parameter (lambda / alpha).
     """
 
     # unpack data
-    X = data["X"]
+    X = data["X"] # shape (N, Ni, D) list of tensors
     X_val = data["X_val"]
+    y_val = data["y_val"]
     A = data["A"]
 
     # unpack args
+    K = args.K
+    D = args.D
+    covariance_type = args.cov
     rounds = args.rounds
     lam = args.reg_term
     M_self = args.m_self
@@ -353,18 +362,19 @@ def run(
     lr = args.lrate
     batch_size = args.batch_size
     device = args.device
-    use_forward_term = args.use_forward_term   
+    use_self_term = args.use_self_term   
 
     # Init params
     N = A.shape[0]
     models = {}
 
+    # init with KMeans
     for i in range(N):
-        gmm = GMM_torch(K=K, D=D).to(device)
+        gmm = GMM_torch(K=K, D=D, covariance_type=covariance_type).to(device)
         gmm.initialize_params(X[i])
         models[i] = gmm
 
-    ll_log = np.zeros((rounds,))
+    ll_rounds = np.zeros((rounds,))
     for t in range(rounds):
         # Freeze all models for synchronous round t
         prev = {i: clone_gmm(m).to(device) for i, m in models.items()}
@@ -376,17 +386,17 @@ def run(
 
             neighbor_models_prev = [prev[j] for j in nbrs]
 
-            # Paper-close weights:
+            # weights:
             beta_i = 1.0
             # gamma_ij, delta_ij carry the SKL 1/2 factor and lambda scaling
-            gamma_list = [0.5 * lam * a for a in a_ij]  # reverse KL part
-            delta_list = [0.5 * lam * a for a in a_ij]  # forward KL part (via frozen sampling)
+            gamma_list = [0.5 * lam * a for a in a_ij]  # nbr term
+            delta_list = [0.5 * lam * a for a in a_ij]  # self term
 
-            models[i] = local_update_emm(
+            models[i] = local_update(
                 gmm_i=models[i],
                 gmm_i_prev=prev[i],
                 neighbor_models_prev=neighbor_models_prev,
-                x_private=X[i],
+                x_local=X[i],
                 gamma_list=gamma_list,
                 delta_list=delta_list,
                 beta_i=beta_i,
@@ -397,17 +407,26 @@ def run(
                 lr=lr,
                 batch_size=batch_size,
                 device=device,
-                use_forward_term=use_forward_term,
+                use_self_term=use_self_term,
             )
 
-        # Simple paper-friendly scalar diagnostic:
-        # average log-likelihood on private data (higher is better), averaged over nodes.
+        # per-sample average log-likelihood on local data, averaged over nodes.
         with torch.no_grad():
             ll = []
             for i in range(N):
                 ll.append(models[i].log_prob(X_val[i]).mean().item())
-            avg_ll = sum(ll) / len(ll)
-            ll_log[t] = avg_ll
-            print(f"[round {t+1:02d}/{rounds}] avg validation log-likelihood = {avg_ll:.3f}")
+            ll_rounds[t] = sum(ll) / len(ll)
+            # print(f"[round {t+1:02d}/{rounds}] avg validation log-likelihood = {avg_ll:.3f}")
     
-    return {"ll": avg_ll, "ll_log": ll_log, "models": models}
+    pred_means = {i: models[i].means.detach().cpu().numpy() for i in models}
+    pred_val = {i: models[i].predict(X_val[i]) for i in models}
+    NMI = [normalized_mutual_info_score(y_val[i].cpu(), pred_val[i].cpu()) for i in models]
+    AMI = [adjusted_mutual_info_score(y_val[i].cpu(), pred_val[i].cpu()) for i in models]
+
+    return {
+        "ll_rounds": ll_rounds,
+        "models": models,
+        "pred_means": pred_means,
+        "NMI": sum(NMI) / len(NMI), # average NMI across nodes
+        "AMI": sum(AMI) / len(AMI)
+    }

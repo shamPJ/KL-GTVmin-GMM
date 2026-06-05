@@ -61,6 +61,11 @@ for D in "${D_LIST[@]}"; do
       --reg_term $LAM \
       --lrate $LR \
       --rounds $ROUNDS \
+      --local_steps 200 \
+      --batch_size 256 \
+      --m_self 512 \
+      --m_nbr 512 \
+      --use_forward_term \
       --seed $SEED \
       --device cuda
 

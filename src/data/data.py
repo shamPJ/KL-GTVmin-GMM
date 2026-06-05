@@ -164,6 +164,7 @@ def generate_data_mean_shift(n_clients=3,
     # Datasets with mean shift
     client_data,  client_labels, client_data_val, client_labels_val = [], [], [], []
     shifts = shift_scale*np.random.randn(n_clients, n_clusters, n_features)
+    means_clients = means[None, :, :] + shifts  # shape (n_clients, n_clusters, n_features)
     for c in range(n_clients):
         Xi, yi = make_blobs(
             n_samples=n_samples+n_samples_val,
@@ -177,7 +178,7 @@ def generate_data_mean_shift(n_clients=3,
         client_labels.append(y_train)
         client_labels_val.append(y_val)
         
-    return np.array(client_data), np.array(client_data_val), np.array(client_labels), np.array(client_labels_val), means
+    return np.array(client_data), np.array(client_data_val), np.array(client_labels), np.array(client_labels_val), means_clients
 
 def generate_cluster_dropout(
                         n_clients=10,
