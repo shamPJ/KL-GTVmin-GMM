@@ -12,8 +12,7 @@ def parse_args():
 
     # Sweep params
     parser.add_argument("--reg_term", type=float, required=True, help="lambda coupling")
-    parser.add_argument("--p_in", type=float, default=1.0)
-    parser.add_argument("--p_out", type=float, default=0.0)
+    parser.add_argument("--p", type=float, default=0.8)
     parser.add_argument("--lrate", type=float, default=1e-3)
 
     # Experiment params

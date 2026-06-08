@@ -27,7 +27,7 @@ def run_experiment(args):
 
     A = er_adjacency_matrix(
         args.n_clients,
-        p=args.p_in,
+        p=args.p,
     )
 
     data = {

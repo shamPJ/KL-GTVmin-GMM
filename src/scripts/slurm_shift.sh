@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=hetfl_gmm
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=10
 #SBATCH --gres=gpu:1
@@ -25,7 +25,7 @@ SEED_LIST=(0 1 2)
 
 LR=0.0005
 LMD=1
-ROUNDS=100
+ROUNDS=50
 NCLIENTS=10
 N_VAL=1000
 K=3
@@ -61,12 +61,14 @@ for D in "${D_LIST[@]}"; do
       --N_val $N_VAL \
       --K $K \
       --n_clients $NCLIENTS \
+      --p_in
       --shift_scale $SCALE \
+      --cov diag \
       --algo distrGTVMinKL \
       --reg_term $LMD \
       --lrate $LR \
       --rounds $ROUNDS \
-      --local_steps 200 \
+      --local_steps 10 \
       --batch_size 256 \
       --m_self 512 \
       --m_nbr 512 \
