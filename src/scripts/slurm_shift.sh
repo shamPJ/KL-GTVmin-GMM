@@ -61,7 +61,7 @@ for D in "${D_LIST[@]}"; do
       --N_val $N_VAL \
       --K $K \
       --n_clients $NCLIENTS \
-      --p_in
+      --p 0.8 \
       --shift_scale $SCALE \
       --cov diag \
       --algo distrGTVMinKL \
