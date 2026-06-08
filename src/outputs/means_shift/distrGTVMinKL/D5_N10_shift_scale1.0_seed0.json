@@ -3,7 +3,7 @@
     "algo": "distrGTVMinKL",
     "cov": "diag",
     "shift_scale": 1.0,
-    "reg_term": 1.0,
+    "reg_term": 10.0,
     "p": 0.8,
     "lrate": 0.0005,
     "D": 5,
@@ -23,6 +23,6 @@
   },
   "algo": "distrGTVMinKL",
   "seed": 0,
-  "NMI": 0.960112942659942,
-  "AMI": 0.9600399277111572
+  "NMI": 0.9596178474694564,
+  "AMI": 0.9595439251555717
 }
