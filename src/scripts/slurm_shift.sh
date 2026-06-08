@@ -14,6 +14,8 @@
 module load mamba
 source activate pytorch-env
 
+export PYTHONPATH=$PYTHONPATH:$PWD
+
 # ===============================
 # Sweep grids
 # ===============================
@@ -68,7 +70,7 @@ for D in "${D_LIST[@]}"; do
       --batch_size 256 \
       --m_self 512 \
       --m_nbr 512 \
-      --use_forward_term \
+      --use_self_term \
       --seed $SEED \
       --device cuda \
       --outdir $OUTDIR

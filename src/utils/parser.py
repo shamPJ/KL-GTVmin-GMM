@@ -8,6 +8,7 @@ def parse_args():
 
     # Data params
     parser.add_argument("--cov", type=str, choices=["diag", "full"], help="Covariance type")
+    parser.add_argument("--shift_scale", type=float, default=1.0, help="Scale of mean shift across nodes")
 
     # Sweep params
     parser.add_argument("--reg_term", type=float, required=True, help="lambda coupling")
@@ -29,7 +30,6 @@ def parse_args():
     parser.add_argument("--outdir", type=str, default="results")
 
     # distrGTV-GB specific params
-    parser.add_argument("--reg_term", type=float, default=1.0, help="coupling term coeff")
     parser.add_argument("--m_self", type=int, default=512)
     parser.add_argument("--m_nbr", type=int, default=512)
 

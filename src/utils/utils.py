@@ -1,4 +1,5 @@
 import numpy as np
+from types import SimpleNamespace
 import torch
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
@@ -28,7 +29,11 @@ def save_metrics(ll_rounds, mse_w, path):
     )
 
 def filter_args(args, allowed_keys):
-    return {k: getattr(args, k) for k in allowed_keys if hasattr(args, k)}
+    return SimpleNamespace(**{
+        k: getattr(args, k)
+        for k in allowed_keys
+        if hasattr(args, k)
+    })
 
 def to_numpy(x: torch.Tensor) -> np.ndarray:
     """Detach torch tensor and move to NumPy."""

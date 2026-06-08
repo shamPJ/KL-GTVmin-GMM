@@ -23,7 +23,7 @@ ALGO_ARG_MAP = {
         "batch_size",
         "m_self",
         "m_nbr",
-        "use_forward_term",
+        "use_self_term",
         "device",
         "K",
         "D",

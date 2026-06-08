@@ -35,7 +35,7 @@ def run_experiment(args):
         "X_val": torch.from_numpy(X_val).to(args.device),
         "y": torch.from_numpy(y).to(args.device),
         "y_val": torch.from_numpy(y_val).to(args.device),
-        "A": torch.from_numpy(A).to(args.device),
+        "A": A,
         "means": means,   # ground truth; shape (n_clients, n_clusters, n_features)
     }
 

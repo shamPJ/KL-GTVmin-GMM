@@ -389,8 +389,8 @@ def run(
             # weights:
             beta_i = 1.0
             # gamma_ij, delta_ij carry the SKL 1/2 factor and lambda scaling
-            gamma_list = [0.5 * lam * a for a in a_ij]  # nbr term
-            delta_list = [0.5 * lam * a for a in a_ij]  # self term
+            gamma_list = [0.5 * lam * float(a) for a in a_ij]  # nbr term
+            delta_list = [0.5 * lam * float(a) for a in a_ij]  # self term
 
             models[i] = local_update(
                 gmm_i=models[i],
@@ -400,7 +400,6 @@ def run(
                 gamma_list=gamma_list,
                 delta_list=delta_list,
                 beta_i=beta_i,
-                lam=lam,
                 M_self=M_self,
                 M_nbr=M_nbr,
                 steps=local_steps,
