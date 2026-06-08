@@ -143,42 +143,83 @@ def generate_data_dirichlet(n_clients=3,
         means_list.append(means)
     return np.array(client_data), np.array(client_data_val), np.array(client_labels), np.array(client_labels_val), means_list
 
-def generate_data_mean_shift(n_clients=3,
-                            n_samples=30,
+def generate_data_mean_shift(n_clients=10,
+                            n_samples=50,
                             n_samples_val=500,
                             n_features=2,
                             n_clusters=3,
-                            seed=None,
-                            shift_scale=0.5):
+                            shift_scale=0.5,
+                            var_scale=1.0,
+                            cov_type='diag',
+                            seed=None):
     if seed is not None:
         np.random.seed(seed)
     
-    n_total = n_clients*(n_samples+n_samples_val)
-    # Global dataset
-    X, y, means = make_blobs(n_samples=n_total,
-                      n_features=n_features,
-                      centers=n_clusters,
-                      return_centers=True,
-                      random_state=seed)
+    # Global means
+    means = np.random.randn(n_clusters, n_features) * 5
     
-    # Datasets with mean shift
-    client_data,  client_labels, client_data_val, client_labels_val = [], [], [], []
-    shifts = shift_scale*np.random.randn(n_clients, n_clusters, n_features)
-    means_clients = means[None, :, :] + shifts  # shape (n_clients, n_clusters, n_features)
-    for c in range(n_clients):
-        Xi, yi = make_blobs(
-            n_samples=n_samples+n_samples_val,
-            n_features=n_features,
-            centers=means+shifts[c],
-            random_state=seed+c)
+    client_data, client_labels = [], []
+    client_data_val, client_labels_val = [], []
+    
+    # Mean heterogeneity
+    shifts = shift_scale * np.random.randn(n_clients, n_clusters, n_features)
+    means_clients = means[None, :, :] + shifts
 
-        X_train, X_val, y_train, y_val = train_test_split(Xi, yi, test_size=n_samples_val, stratify=yi)
+    covs_clients = []
+    
+    for c in range(n_clients):
+        covs = []
+        for k in range(n_clusters):
+            
+            if cov_type == 'diag':
+                diag = var_scale * np.abs(1 + 0.5*np.random.randn(n_features))
+                cov_k = np.diag(diag)
+            
+            elif cov_type == 'full':
+                A = np.random.randn(n_features, n_features)
+                cov_k = A @ A.T
+                cov_k *= var_scale
+            
+            covs.append(cov_k)
+        
+        covs_clients.append(covs)
+
+        # ---- sampling ----
+        X_list, y_list = [], []
+        n_total = n_samples + n_samples_val
+        per_cluster = n_total // n_clusters
+
+        for k in range(n_clusters):
+            Xk = np.random.multivariate_normal(
+                mean=means_clients[c, k],
+                cov=covs[k],
+                size=per_cluster
+            )
+            yk = np.full(per_cluster, k)
+            
+            X_list.append(Xk)
+            y_list.append(yk)
+
+        Xi = np.vstack(X_list)
+        yi = np.hstack(y_list)
+
+        X_train, X_val, y_train, y_val = train_test_split(
+            Xi, yi,
+            test_size=n_samples_val,
+            stratify=yi
+        )
+
         client_data.append(X_train)
         client_data_val.append(X_val)
         client_labels.append(y_train)
         client_labels_val.append(y_val)
-        
-    return np.array(client_data), np.array(client_data_val), np.array(client_labels), np.array(client_labels_val), means_clients
+
+    return (np.array(client_data),
+            np.array(client_data_val),
+            np.array(client_labels),
+            np.array(client_labels_val),
+            means_clients,
+            np.array(covs_clients))
 
 def generate_cluster_dropout(
                         n_clients=10,
