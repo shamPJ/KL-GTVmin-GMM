@@ -19,10 +19,10 @@
     "m_nbr": 512,
     "local_steps": 10,
     "batch_size": 256,
-    "use_self_term": true
+    "use_self_term": false
   },
   "algo": "distrGTVMinKL",
   "seed": 0,
-  "NMI": 0.3999377198958741,
-  "AMI": 0.3986393524123817
+  "NMI": 0.3994821070851128,
+  "AMI": 0.398183180184276
 }

@@ -72,7 +72,7 @@ for D in "${D_LIST[@]}"; do
       --batch_size 256 \
       --m_self 512 \
       --m_nbr 512 \
-      --use_self_term \
+      --no_self_term \
       --seed $SEED \
       --device cuda \
       --outdir $OUTDIR

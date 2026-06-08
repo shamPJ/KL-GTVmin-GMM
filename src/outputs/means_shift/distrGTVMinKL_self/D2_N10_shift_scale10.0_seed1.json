@@ -1,0 +1,28 @@
+{
+  "config": {
+    "algo": "distrGTVMinKL",
+    "cov": "diag",
+    "shift_scale": 10.0,
+    "reg_term": 1.0,
+    "p": 0.8,
+    "lrate": 0.0005,
+    "D": 2,
+    "N": 10,
+    "N_val": 1000,
+    "K": 3,
+    "n_clients": 10,
+    "rounds": 50,
+    "seed": 1,
+    "device": "cuda",
+    "outdir": "outputs/means_shift/distrGTVMinKL",
+    "m_self": 512,
+    "m_nbr": 512,
+    "local_steps": 10,
+    "batch_size": 256,
+    "use_self_term": true
+  },
+  "algo": "distrGTVMinKL",
+  "seed": 1,
+  "NMI": 0.9457402375215274,
+  "AMI": 0.9456386676390094
+}
