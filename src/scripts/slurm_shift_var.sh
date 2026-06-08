@@ -4,7 +4,7 @@
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=10
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-39
+#SBATCH --array=0-29
 #SBATCH --output=logs/out_%A_%a.out
 #SBATCH --error=logs/err_%A_%a.err
 
@@ -19,7 +19,7 @@ export PYTHONPATH=$PYTHONPATH:$PWD
 # ===============================
 # Sweep grids
 # ===============================
-SCALE_LIST=(0.1 1 10 100) # mean shift scale
+VAR_LIST=(0.1 1 10) # variance scale
 SEED_LIST=(0 1 2 3 4 5 6 7 8 9)
 
 LR=0.0005
@@ -28,20 +28,20 @@ ROUNDS=50
 NCLIENTS=10
 N_VAL=1000
 K=5
-OUTDIR=outputs/means_shift
+OUTDIR=outputs/var
 
 # ===============================
 # Index mapping
 # ===============================
 IDX=$SLURM_ARRAY_TASK_ID
 
-NSC=${#SCALE_LIST[@]}
+NSC=${#VAR_LIST[@]}
 NS=${#SEED_LIST[@]}
 
-SCALE_IDX=$(( IDX / NS ))
+VAR_IDX=$(( IDX / NS ))
 SEED_IDX=$(( IDX % NS ))
 
-SCALE=${SCALE_LIST[$SCALE_IDX]}
+VAR=${VAR_LIST[$VAR_IDX]}
 SEED=${SEED_LIST[$SEED_IDX]}
 
 D_LIST=(2 5 10)
@@ -51,7 +51,7 @@ for D in "${D_LIST[@]}"; do
   for N in "${N_LIST[@]}"; do
 
     echo "========================================"
-    echo "D=$D N=$N shift_scale=$SCALE seed=$SEED"
+    echo "D=$D N=$N var_scale=$VAR seed=$SEED"
     echo "========================================"
 
     srun python scripts/run_means_shift.py \
@@ -61,8 +61,8 @@ for D in "${D_LIST[@]}"; do
       --K $K \
       --n_clients $NCLIENTS \
       --p 0.8 \
-      --shift_scale $SCALE \
-      --var_scale 1 \
+      --var_scale $VAR \
+      --shift_scale 1.0 \
       --cov diag \
       --algo distrGTVMinKL \
       --reg_term $LMD \

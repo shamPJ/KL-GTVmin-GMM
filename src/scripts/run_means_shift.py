@@ -22,7 +22,9 @@ def run_experiment(args):
         n_features=args.D,
         n_clusters=args.K,
         seed=args.seed,
-        shift_scale=args.shift_scale
+        shift_scale=args.shift_scale,
+        var_scale=args.var_scale, 
+        cov=args.cov
     )
 
     A = er_adjacency_matrix(
@@ -69,7 +71,7 @@ def run_experiment(args):
         mse = est_error(pred_mean, true_mean)
         MSE_w.append(mse)
 
-    result["MSE_w"] = MSE_w
+    result["MSE_w"] = sum(MSE_w) / len(MSE_w)
 
     return result
 
@@ -79,6 +81,9 @@ def run_experiment(args):
 if __name__ == "__main__":
     args = parse_args()
     
+    if args.algo == "distrGTVMinKL" and args.use_self_term:
+        args.outdir = os.path.join(args.outdir, "distrGTVMinKL_self_term")
+
     args.outdir = os.path.join(
     args.outdir,
     args.algo
@@ -90,6 +95,7 @@ if __name__ == "__main__":
     base = (
     f"D{args.D}_N{args.N}_"
     f"shift_scale{args.shift_scale}_"
+    f"var_scale{args.var_scale}_"
     f"seed{args.seed}"
     )
 
@@ -98,10 +104,12 @@ if __name__ == "__main__":
 
     json_result = {
         "config": result["config"],
-        "algo": result["algo"],
-        "seed": result["seed"],
-        "NMI": result["NMI"],
-        "AMI": result["AMI"],
+        "results": {
+            "NMI": result["NMI"],
+            "AMI": result["AMI"],
+            "MSE_w": result["MSE_w"],
+            "ll": result["ll_rounds"][-1] if result["ll_rounds"] is not None else None
+        }
     }
 
     with open(json_path, "w") as f:
@@ -110,7 +118,6 @@ if __name__ == "__main__":
     # ---------- CSV files ----------
     save_metrics(
     result.get("ll_rounds"),
-    result.get("MSE_w"),
     os.path.join(args.outdir, base + "_metrics.csv")
     )
 

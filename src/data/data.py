@@ -172,7 +172,15 @@ def generate_data_mean_shift(n_clients=10,
         for k in range(n_clusters):
             
             if cov_type == 'diag':
-                diag = var_scale * np.abs(1 + 0.5*np.random.randn(n_features))
+                # diag = var_scale * np.abs(1 + 0.5*np.random.randn(n_features))
+                # cov_k = np.diag(diag)
+
+                if np.random.rand() < 0.5:
+                    # sharp cluster
+                    diag = var_scale * np.random.uniform(0.05, 0.5, size=n_features)
+                else:
+                    # wide cluster
+                    diag = var_scale * np.random.uniform(2, 5, size=n_features)
                 cov_k = np.diag(diag)
             
             elif cov_type == 'full':
